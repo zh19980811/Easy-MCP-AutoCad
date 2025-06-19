@@ -1,3 +1,5 @@
+[![MseeP.ai Security Assessment Badge](https://mseep.net/pr/zh19980811-easy-mcp-autocad-badge.png)](https://mseep.ai/app/zh19980811-easy-mcp-autocad)
+
 
 # AutoCAD MCP 服务器
 
