@@ -261,25 +261,14 @@ def highlight_entity(ctx: Context, handle: str, color: int = 1) -> str:
         
         doc = acad.ActiveDocument
         
-        # 保存当前选择集
-        doc.SelectionSets.Add("TempSS")
-        selection = doc.SelectionSets.Item("TempSS")
-        
-        # 根据Handle选择实体
-        filter_type = win32com.client.VARIANT(win32com.client.pythoncom.VT_ARRAY | win32com.client.pythoncom.VT_I2, [0])
-        filter_data = win32com.client.VARIANT(win32com.client.pythoncom.VT_ARRAY | win32com.client.pythoncom.VT_VARIANT, ["HANDLE", handle])
-        selection.Select(2, 0, 0, filter_type, filter_data)
-        
-        if selection.Count == 0:
-            selection.Delete()
-            return f"未找到Handle为 {handle} 的实体"
-        
-        # 修改实体颜色
-        entity = selection.Item(0)
+        # 根据Handle直接获取实体
+        try:
+            entity = doc.HandleToObject(handle)
+        except:
+             return f"未找到Handle为 {handle} 的实体"
+
         original_color = entity.Color
         entity.Color = color
-        
-        selection.Delete()
         
         return f"已高亮实体 {handle}，颜色从 {original_color} 改为 {color}"
     except Exception as e:
@@ -535,7 +524,6 @@ def query_and_highlight(ctx: Context, sql_query: str, highlight_color: int = 1) 
         
         # 创建选择集
         try:
-            # 尝试删除可能存在的选择集
             doc.SelectionSets.Item("QueryResults").Delete()
         except:
             pass
@@ -544,36 +532,32 @@ def query_and_highlight(ctx: Context, sql_query: str, highlight_color: int = 1) 
         
         # 高亮找到的实体
         highlighted_count = 0
+        entities_to_add = []
+        
         for handle in handles:
             try:
-                # 根据Handle选择实体
-                filter_type = win32com.client.VARIANT(win32com.client.pythoncom.VT_ARRAY | win32com.client.pythoncom.VT_I2, [0])
-                filter_data = win32com.client.VARIANT(win32com.client.pythoncom.VT_ARRAY | win32com.client.pythoncom.VT_VARIANT, ["HANDLE", handle])
-                
-                # 创建临时选择集
-                temp_selection = doc.SelectionSets.Add(f"Temp_{random.randint(1000, 9999)}")
-                temp_selection.Select(2, 0, 0, filter_type, filter_data)
-                
-                if temp_selection.Count > 0:
-                    # 修改颜色
-                    entity = temp_selection.Item(0)
-                    entity.Color = highlight_color
-                    
-                    # 添加到主选择集
-                    selection.AddItems([entity])
-                    highlighted_count += 1
-                
-                # 删除临时选择集
-                temp_selection.Delete()
+                # 直接获取实体
+                entity = doc.HandleToObject(handle)
+                entity.Color = highlight_color
+                entities_to_add.append(entity)
+                highlighted_count += 1
             except Exception as e:
                 print(f"处理实体 {handle} 时出错: {str(e)}")
+        
+        # 将实体添加到选择集（方便在CAD中查看属性等）
+        if entities_to_add:
+            try:
+                # AddItems需要变体数组，comtypes会自动处理list，pywin32有时需要特别处理
+                # 这里简单尝试，如果失败不影响高亮结果
+                selection.AddItems(entities_to_add)
+            except:
+                pass
         
         if highlighted_count > 0:
             # 缩放到选择集
             doc.ActiveView.ZoomAll()
             return f"已高亮显示 {highlighted_count} 个实体（共 {len(handles)} 个结果）"
         else:
-            selection.Delete()
             return f"未能高亮任何实体"
     except Exception as e:
         return f"查询并高亮失败: {str(e)}"
@@ -616,6 +600,116 @@ def draw_line(ctx: Context, start_x: float, start_y: float, end_x: float, end_y:
         return f"已创建直线，从 ({start_x}, {start_y}) 到 ({end_x}, {end_y})"
     except Exception as e:
         return f"创建直线失败: {str(e)}"
+
+@mcp.tool()
+def draw_polyline(ctx: Context, points: List[float], closed: bool = False, layer: Optional[str] = None) -> str:
+    """绘制多段线 (Polyline)
+    
+    Args:
+        points: 坐标列表 [x1, y1, x2, y2, ...]
+        closed: 是否闭合
+        layer: 图层名称
+    """
+    try:
+        acad = win32com.client.Dispatch("AutoCAD.Application")
+        if acad.Documents.Count == 0:
+            return "无打开的文档"
+            
+        doc = acad.ActiveDocument
+        model_space = doc.ModelSpace
+        
+        # 处理图层
+        if layer:
+            try:
+                doc.Layers.Item(layer)
+            except:
+                doc.Layers.Add(layer)
+            doc.ActiveLayer = doc.Layers.Item(layer)
+
+        # 转换坐标点
+        # LightweightPolyline 需要 2D 坐标数组 (double)
+        pt_array = win32com.client.VARIANT(win32com.client.pythoncom.VT_ARRAY | win32com.client.pythoncom.VT_R8, points)
+        
+        # 创建多段线
+        pline = model_space.AddLightWeightPolyline(pt_array)
+        pline.Closed = closed
+        
+        return f"已创建多段线，Handle: {pline.Handle}"
+    except Exception as e:
+        return f"创建多段线失败: {str(e)}"
+
+@mcp.tool()
+def draw_rectangle(ctx: Context, x1: float, y1: float, x2: float, y2: float, layer: Optional[str] = None) -> str:
+    """绘制矩形
+    
+    Args:
+        x1, y1: 角点1坐标
+        x2, y2: 对角点2坐标
+        layer: 图层名称
+    """
+    # 构造矩形的4个顶点坐标
+    points = [x1, y1, x2, y1, x2, y2, x1, y2]
+    return draw_polyline(ctx, points, closed=True, layer=layer)
+
+@mcp.tool()
+def draw_text(ctx: Context, text_string: str, insert_x: float, insert_y: float, height: float = 2.5, rotation: float = 0, layer: Optional[str] = None) -> str:
+    """绘制单行文字
+    
+    Args:
+        text_string: 文字内容
+        insert_x, insert_y: 插入点坐标
+        height: 文字高度
+        rotation: 旋转角度 (度)
+        layer: 图层名称
+    """
+    try:
+        acad = win32com.client.Dispatch("AutoCAD.Application")
+        if acad.Documents.Count == 0:
+            return "无打开的文档"
+            
+        doc = acad.ActiveDocument
+        model_space = doc.ModelSpace
+        
+        # 处理图层
+        if layer:
+            try:
+                doc.Layers.Item(layer)
+            except:
+                doc.Layers.Add(layer)
+            doc.ActiveLayer = doc.Layers.Item(layer)
+            
+        insert_pnt = win32com.client.VARIANT(win32com.client.pythoncom.VT_ARRAY | win32com.client.pythoncom.VT_R8, [insert_x, insert_y, 0])
+        text_obj = model_space.AddText(text_string, insert_pnt, height)
+        
+        if rotation != 0:
+            import math
+            text_obj.Rotation = rotation * math.pi / 180
+            
+        return f"已创建文字 '{text_string}'，Handle: {text_obj.Handle}"
+    except Exception as e:
+        return f"创建文字失败: {str(e)}"
+
+@mcp.tool()
+def create_layer(ctx: Context, name: str, color_index: int = 7) -> str:
+    """创建或修改图层
+    
+    Args:
+        name: 图层名称
+        color_index: 颜色索引 (1-255)
+    """
+    try:
+        acad = win32com.client.Dispatch("AutoCAD.Application")
+        doc = acad.ActiveDocument
+        
+        try:
+            layer = doc.Layers.Item(name)
+        except:
+            layer = doc.Layers.Add(name)
+            
+        layer.Color = color_index
+        return f"图层 '{name}' 已设置，颜色: {color_index}"
+    except Exception as e:
+        return f"设置图层失败: {str(e)}"
 
 @mcp.tool()
 def draw_device_connection(ctx: Context, start_device: str, end_device: str, start_x: Optional[float] = None, start_y: Optional[float] = None, end_x: Optional[float] = None, end_y: Optional[float] = None, layer: Optional[str] = None) -> str:
@@ -710,6 +804,88 @@ def draw_device_connection(ctx: Context, start_device: str, end_device: str, sta
     except Exception as e:
         return f"创建连接线失败: {str(e)}"
     
+@mcp.tool()
+def move_entity(ctx: Context, handle: str, start_point: List[float], end_point: List[float]) -> str:
+    """移动实体
+    
+    Args:
+        handle: 实体句柄
+        start_point: 基干点 [x, y, z]（通常都是[0,0,0]或者实体的某个点）
+        end_point: 目标点 [x, y, z]
+    """
+    try:
+        acad = win32com.client.Dispatch("AutoCAD.Application")
+        doc = acad.ActiveDocument
+        
+        try:
+            entity = doc.HandleToObject(handle)
+        except:
+             return f"未找到Handle为 {handle} 的实体"
+             
+        p1 = win32com.client.VARIANT(win32com.client.pythoncom.VT_ARRAY | win32com.client.pythoncom.VT_R8, start_point)
+        p2 = win32com.client.VARIANT(win32com.client.pythoncom.VT_ARRAY | win32com.client.pythoncom.VT_R8, end_point)
+        
+        entity.Move(p1, p2)
+        return f"已移动实体 {handle}"
+    except Exception as e:
+        return f"移动实体失败: {str(e)}"
+
+@mcp.tool()
+def rotate_entity(ctx: Context, handle: str, base_point: List[float], angle: float) -> str:
+    """旋转实体
+    
+    Args:
+        handle: 实体句柄
+        base_point: 旋转中心点 [x, y, z]
+        angle: 旋转角度（度）
+    """
+    try:
+        acad = win32com.client.Dispatch("AutoCAD.Application")
+        doc = acad.ActiveDocument
+        
+        try:
+            entity = doc.HandleToObject(handle)
+        except:
+             return f"未找到Handle为 {handle} 的实体"
+             
+        p_base = win32com.client.VARIANT(win32com.client.pythoncom.VT_ARRAY | win32com.client.pythoncom.VT_R8, base_point)
+        
+        import math
+        angle_rad = angle * math.pi / 180
+        
+        entity.Rotate(p_base, angle_rad)
+        return f"已旋转实体 {handle} {angle} 度"
+    except Exception as e:
+        return f"旋转实体失败: {str(e)}"
+
+@mcp.tool()
+def copy_entity(ctx: Context, handle: str, start_point: List[float], end_point: List[float]) -> str:
+    """复制实体
+    
+    Args:
+        handle: 源实体句柄
+        start_point: 基干点 [x, y, z]
+        end_point: 目标点 [x, y, z]
+    """
+    try:
+        acad = win32com.client.Dispatch("AutoCAD.Application")
+        doc = acad.ActiveDocument
+        
+        try:
+            entity = doc.HandleToObject(handle)
+        except:
+             return f"未找到Handle为 {handle} 的实体"
+             
+        # Copy()方法返回新对象
+        new_entity = entity.Copy()
+        
+        p1 = win32com.client.VARIANT(win32com.client.pythoncom.VT_ARRAY | win32com.client.pythoncom.VT_R8, start_point)
+        p2 = win32com.client.VARIANT(win32com.client.pythoncom.VT_ARRAY | win32com.client.pythoncom.VT_R8, end_point)
+        
+        new_entity.Move(p1, p2)
+        return f"已复制实体，新Handle: {new_entity.Handle}"
+    except Exception as e:
+        return f"复制实体失败: {str(e)}"
 # 启动服务器
 if __name__ == "__main__":
     mcp.run()
