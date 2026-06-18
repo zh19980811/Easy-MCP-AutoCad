@@ -1,13 +1,43 @@
 from mcp.server.fastmcp import FastMCP, Context
 from typing import Optional, List, Dict, Any
 import win32com.client
+import pywintypes
 import sqlite3
 import json
 import random
 import re
+import time
 
 # 创建服务器
 mcp = FastMCP("AutoCAD-DB-Server")
+
+# AutoCAD 偶尔会拒绝密集的 COM 调用 (RPC_E_CALL_REJECTED / 服务器忙)，需要短暂重试。
+# AutoCAD sometimes rejects rapid COM calls (RPC_E_CALL_REJECTED / server busy); retry briefly.
+_COM_BUSY = (-2147418111, -2147417846, -2147023174)
+
+
+def com_retry(func, *args, retries=200, delay=0.05, **kwargs):
+    """调用一个 COM 方法，遇到 "服务器忙" 类错误时自动重试。
+    Call a COM function, retrying automatically on transient COM 'busy' errors."""
+    last = None
+    for _ in range(retries):
+        try:
+            return func(*args, **kwargs)
+        except pywintypes.com_error as ex:
+            if ex.args and ex.args[0] in _COM_BUSY:
+                last = ex
+                time.sleep(delay)
+                continue
+            raise
+    if last is not None:
+        raise last
+    return func(*args, **kwargs)
+
+
+def connect_autocad():
+    """连接到正在运行的 AutoCAD 实例（带忙重试）。
+    Connect to the running AutoCAD instance, retrying on transient COM 'busy' errors."""
+    return com_retry(win32com.client.Dispatch, "AutoCAD.Application")
 
 # 初始化 SQLite 数据库
 def init_db():
@@ -51,7 +81,7 @@ def create_new_drawing(ctx: Context, template: Optional[str] = None) -> str:
     """创建新的 AutoCAD 图纸"""
     try:
         # 尝试连接到 AutoCAD
-        acad = win32com.client.Dispatch("AutoCAD.Application")
+        acad = connect_autocad()
         acad.Visible = True
         
         # 创建新文档
@@ -76,7 +106,7 @@ def draw_line(ctx: Context, start_x: float, start_y: float, end_x: float, end_y:
         layer: 可选的图层名称
     """
     try:
-        acad = win32com.client.Dispatch("AutoCAD.Application")
+        acad = connect_autocad()
         if acad.Documents.Count == 0:
             return "无打开的文档，请先创建或打开一个图纸"
         
@@ -130,7 +160,7 @@ def draw_circle(ctx: Context, center_x: float, center_y: float, radius: float, l
         layer: 可选的图层名称
     """
     try:
-        acad = win32com.client.Dispatch("AutoCAD.Application")
+        acad = connect_autocad()
         if acad.Documents.Count == 0:
             return "无打开的文档，请先创建或打开一个图纸"
         
@@ -177,7 +207,7 @@ def draw_circle(ctx: Context, center_x: float, center_y: float, radius: float, l
 def scan_all_entities(ctx: Context) -> str:
     """扫描当前图纸中的所有实体并保存到数据库"""
     try:
-        acad = win32com.client.Dispatch("AutoCAD.Application")
+        acad = connect_autocad()
         if acad.Documents.Count == 0:
             return "无打开的文档，请先创建或打开一个图纸"
         
@@ -255,7 +285,7 @@ def highlight_entity(ctx: Context, handle: str, color: int = 1) -> str:
         color: 高亮颜色码（1=红色, 2=黄色, 3=绿色, 4=青色, 5=蓝色, 6=洋红色）
     """
     try:
-        acad = win32com.client.Dispatch("AutoCAD.Application")
+        acad = connect_autocad()
         if acad.Documents.Count == 0:
             return "无打开的文档，请先创建或打开一个图纸"
         
@@ -284,7 +314,7 @@ def count_text_patterns(ctx: Context, pattern: str = "PMC-3M") -> str:
         pattern: 要搜索的文本模式，默认为"PMC-3M"
     """
     try:
-        acad = win32com.client.Dispatch("AutoCAD.Application")
+        acad = connect_autocad()
         if acad.Documents.Count == 0:
             return "无打开的文档，请先创建或打开一个图纸"
         
@@ -355,7 +385,7 @@ def highlight_text_matches(ctx: Context, pattern: str = "PMC-3M", color: int = 1
         color: 高亮颜色码（1=红色, 2=黄色, 3=绿色, 4=青色, 5=蓝色, 6=洋红色）
     """
     try:
-        acad = win32com.client.Dispatch("AutoCAD.Application")
+        acad = connect_autocad()
         if acad.Documents.Count == 0:
             return "无打开的文档，请先创建或打开一个图纸"
         
@@ -516,7 +546,7 @@ def query_and_highlight(ctx: Context, sql_query: str, highlight_color: int = 1) 
         handles = [row[handle_index] for row in rows]
         
         # 高亮实体
-        acad = win32com.client.Dispatch("AutoCAD.Application")
+        acad = connect_autocad()
         if acad.Documents.Count == 0:
             return "无打开的文档，请先创建或打开一个图纸"
         
@@ -561,45 +591,6 @@ def query_and_highlight(ctx: Context, sql_query: str, highlight_color: int = 1) 
             return f"未能高亮任何实体"
     except Exception as e:
         return f"查询并高亮失败: {str(e)}"
-# 添加到现有代码中
-
-@mcp.tool()
-@mcp.tool()
-def draw_line(ctx: Context, start_x: float, start_y: float, end_x: float, end_y: float, layer: Optional[str] = None) -> str:
-    """在AutoCAD中绘制直线"""
-    try:
-        acad = win32com.client.Dispatch("AutoCAD.Application")
-        if acad.Documents.Count == 0:
-            return "无打开的文档，请先创建或打开一个图纸"
-        
-        doc = acad.ActiveDocument
-        model_space = doc.ModelSpace
-        
-        # 处理图层...
-        
-        # 创建直线
-        line = model_space.AddLine(
-            win32com.client.VARIANT(win32com.client.pythoncom.VT_ARRAY | win32com.client.pythoncom.VT_R8, [start_x, start_y, 0]),
-            win32com.client.VARIANT(win32com.client.pythoncom.VT_ARRAY | win32com.client.pythoncom.VT_R8, [end_x, end_y, 0])
-        )
-        
-        # 将线条信息存入数据库（不使用handle字段）
-        conn = sqlite3.connect("autocad_data.db")
-        cursor = conn.cursor()
-        props = {
-            "start_point": [start_x, start_y, 0],
-            "end_point": [end_x, end_y, 0]
-        }
-        cursor.execute(
-            "INSERT INTO cad_elements (name, type, layer, properties) VALUES (?, ?, ?, ?)",
-            ("Line", "AcDbLine", doc.ActiveLayer.Name, json.dumps(props))
-        )
-        conn.commit()
-        conn.close()
-        
-        return f"已创建直线，从 ({start_x}, {start_y}) 到 ({end_x}, {end_y})"
-    except Exception as e:
-        return f"创建直线失败: {str(e)}"
 
 @mcp.tool()
 def draw_polyline(ctx: Context, points: List[float], closed: bool = False, layer: Optional[str] = None) -> str:
@@ -611,7 +602,7 @@ def draw_polyline(ctx: Context, points: List[float], closed: bool = False, layer
         layer: 图层名称
     """
     try:
-        acad = win32com.client.Dispatch("AutoCAD.Application")
+        acad = connect_autocad()
         if acad.Documents.Count == 0:
             return "无打开的文档"
             
@@ -663,7 +654,7 @@ def draw_text(ctx: Context, text_string: str, insert_x: float, insert_y: float, 
         layer: 图层名称
     """
     try:
-        acad = win32com.client.Dispatch("AutoCAD.Application")
+        acad = connect_autocad()
         if acad.Documents.Count == 0:
             return "无打开的文档"
             
@@ -698,7 +689,7 @@ def create_layer(ctx: Context, name: str, color_index: int = 7) -> str:
         color_index: 颜色索引 (1-255)
     """
     try:
-        acad = win32com.client.Dispatch("AutoCAD.Application")
+        acad = connect_autocad()
         doc = acad.ActiveDocument
         
         try:
@@ -725,7 +716,7 @@ def draw_device_connection(ctx: Context, start_device: str, end_device: str, sta
         layer: 可选的图层名称
     """
     try:
-        acad = win32com.client.Dispatch("AutoCAD.Application")
+        acad = connect_autocad()
         if acad.Documents.Count == 0:
             return "无打开的文档，请先创建或打开一个图纸"
         
@@ -814,7 +805,7 @@ def move_entity(ctx: Context, handle: str, start_point: List[float], end_point: 
         end_point: 目标点 [x, y, z]
     """
     try:
-        acad = win32com.client.Dispatch("AutoCAD.Application")
+        acad = connect_autocad()
         doc = acad.ActiveDocument
         
         try:
@@ -840,7 +831,7 @@ def rotate_entity(ctx: Context, handle: str, base_point: List[float], angle: flo
         angle: 旋转角度（度）
     """
     try:
-        acad = win32com.client.Dispatch("AutoCAD.Application")
+        acad = connect_autocad()
         doc = acad.ActiveDocument
         
         try:
@@ -868,7 +859,7 @@ def copy_entity(ctx: Context, handle: str, start_point: List[float], end_point: 
         end_point: 目标点 [x, y, z]
     """
     try:
-        acad = win32com.client.Dispatch("AutoCAD.Application")
+        acad = connect_autocad()
         doc = acad.ActiveDocument
         
         try:
