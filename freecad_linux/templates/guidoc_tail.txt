@@ -1,0 +1,1 @@
+<Camera settings="OrthographicCamera {&#10;  viewportMapping ADJUST_CAMERA&#10;  position 0 0 1&#10;  orientation 0 0 1  0&#10;  aspectRatio 1&#10;  focalDistance 5&#10;  height 4.1421356&#10;&#10;}&#10;"/>

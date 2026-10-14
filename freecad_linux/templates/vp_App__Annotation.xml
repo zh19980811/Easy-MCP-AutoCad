@@ -1,0 +1,40 @@
+<ViewProvider name="{NAME}" expanded="0" treeRank="-1">
+            <Properties Count="12" TransientCount="0">
+                <Property name="DisplayMode" type="App::PropertyEnumeration" status="1">
+                    <Integer value="0"/>
+                </Property>
+                <Property name="FontName" type="App::PropertyFont" status="1">
+                    <String value="Arial"/>
+                </Property>
+                <Property name="FontSize" type="App::PropertyFloat" status="1">
+                    <Float value="12.0000000000000000"/>
+                </Property>
+                <Property name="Justification" type="App::PropertyEnumeration" status="1">
+                    <Integer value="0"/>
+                </Property>
+                <Property name="LineSpacing" type="App::PropertyFloat" status="1">
+                    <Float value="1.0000000000000000"/>
+                </Property>
+                <Property name="OnTopWhenSelected" type="App::PropertyEnumeration" status="1">
+                    <Integer value="0"/>
+                </Property>
+                <Property name="Rotation" type="App::PropertyAngle" status="1">
+                    <Float value="0.0000000000000000"/>
+                </Property>
+                <Property name="RotationAxis" type="App::PropertyEnumeration" status="1">
+                    <Integer value="2"/>
+                </Property>
+                <Property name="SelectionStyle" type="App::PropertyEnumeration" status="1">
+                    <Integer value="0"/>
+                </Property>
+                <Property name="ShowInTree" type="App::PropertyBool" status="1">
+                    <Bool value="true"/>
+                </Property>
+                <Property name="TextColor" type="App::PropertyColor" status="1">
+                    <PropertyColor value="2914369023"/>
+                </Property>
+                <Property name="Visibility" type="App::PropertyBool" status="1">
+                    <Bool value="true"/>
+                </Property>
+            </Properties>
+        </ViewProvider>

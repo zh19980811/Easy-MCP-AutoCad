@@ -1,0 +1,7 @@
+    <ViewProvider name="{NAME}" expanded="0" treeRank="-1" Extensions="True">
+        <Properties Count="1" TransientCount="0">
+            <Property name="Visibility" type="App::PropertyBool" status="1">
+                <Bool value="true"/>
+            </Property>
+        </Properties>
+    </ViewProvider>
