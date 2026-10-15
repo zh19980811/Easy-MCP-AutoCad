@@ -1,0 +1,23 @@
+<ViewProvider name="{NAME}" expanded="0" treeRank="-1" Extensions="True">
+            <Extensions Count="1">
+                <Extension type="Gui::ViewProviderGroupExtension" name="ViewProviderGroupExtension">
+                </Extension>
+            </Extensions>
+            <Properties Count="5" TransientCount="0">
+                <Property name="DisplayMode" type="App::PropertyEnumeration" status="1">
+                    <Integer value="0"/>
+                </Property>
+                <Property name="OnTopWhenSelected" type="App::PropertyEnumeration" status="1">
+                    <Integer value="0"/>
+                </Property>
+                <Property name="SelectionStyle" type="App::PropertyEnumeration" status="1">
+                    <Integer value="0"/>
+                </Property>
+                <Property name="ShowInTree" type="App::PropertyBool" status="1">
+                    <Bool value="true"/>
+                </Property>
+                <Property name="Visibility" type="App::PropertyBool" status="1">
+                    <Bool value="true"/>
+                </Property>
+            </Properties>
+        </ViewProvider>
